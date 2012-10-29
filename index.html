@@ -1,0 +1,346 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <title></title>
+  <link rel="stylesheet" href="normalize.css" type="text/css" />
+  <link rel="stylesheet" href="tutorial.css" type="text/css" />
+</head>
+<body>
+<h1 id="judgemental-eye-being-a-walkthrough-on-building-a-movie-rating-app">Judgemental Eye: Being a Walkthrough on Building a Movie Rating App</h1>
+<img width="690px" src="http://art.penny-arcade.com/photos/217529237_jw3tg-L-2.jpg" />
+<p>Having spent so much time on <a href="http://chriszf.github.com/tipsy">Tipsy</a>, we should feel fairly comfortable building an app-which-is-like-a-blog from scratch. Scratch here is relative term. We used <a href="http://sqlite.org">sqlite</a> for our database, writing our own queries, but used <a href="http://flask.pocoo.org">Flask</a> for its web server and templating engine.</p>
+<p>We're going to move on, building a more complex application than before. This time, we're going to use a concept called 'Machine Learning' to teach a computer how to predict things about a human's tastes.</p>
+<p>In addition, we're going to remove ourself one layer further from the database using something called an <a href="http://en.wikipedia.org/wiki/Object-relational_mapping">ORM</a>. In the third part of the Tipsy tutorial, we took our data dictionaries and turned them into classes, changing database-access functions into class methods, in an effort to organize our code.</p>
+<p>In 2003, <a href="http://en.wikipedia.org/wiki/Martin_Fowler">Martin Fowler</a> documented a technique called &quot;<a href="http://books.google.com/books?id=FyWZt5DdvFkC&amp;lpg=PA1&amp;dq=Patterns%20of%20Enterprise%20Application%20Architecture%20by%20Martin%20Fowler&amp;pg=PT187#v=onepage&amp;q=active%20record&amp;f=false">Active Record</a>&quot;, a scheme which can be diagrammed like so:</p>
+<pre><code>Table  &lt;-&gt;  Class
+Column &lt;-&gt;  Attribute
+Row    &lt;-&gt;  Instance</code></pre>
+<p>In essence, a table definition is more or less equivalent to a class definition. Each column can be thought of as an attribute or property of that class. Each row is also analogous to an instantiation of the class. The analogy isn't perfect, but it serves us well enough. The analogy allows us to construct software that, through the magic of introspection, can automatically write and execute SQL queries for us <em>without</em> the programmer having to stop and think about the sql required to accomplish a task. Here's an example. Given the following sql:</p>
+<pre><code>create table Users 
+    (id int primary key not null autoincrement,
+     email varchar(64),
+     password varchar(64));</code></pre>
+<p>Here is how you might set up the class:</p>
+<pre><code>class User(object):
+    def __init__(self, id, email, password):
+        self.id = id
+        self.email = email
+        self.password = password
+
+    @classmethod
+    def get_by_id(cls, id):
+        c = db.cursor()
+        c.execute(&quot;select * from Users where id = ?&quot;, (id,))
+        row = c.fetchone()
+        return cls(row[0], row[1], row[2])
+
+    def change_password(self, password):
+        c = db.cursor()
+        query = &quot;update Users set password=? where id=?&quot;
+        result = c.execute(query, (password, self.id))
+        db.commit()
+        return result.lastrowid == self.id</code></pre>
+<p>And so here's how you would update a user's password:</p>
+<pre><code>    chriszf = User.get_by_id(5)
+    chriszf.change_password(&quot;mynewpassword&quot;)</code></pre>
+<p>There's nothing wrong here yet, but if we wanted to be able to update the User's email address as well, we start having to write significant amounts of repetitive code.</p>
+<p>An ORM provides us with a slightly different workflow. Instead of writing a bunch of code to handle sql, it instead <em>peeks</em> at your class definitions and uses them to <em>generate</em> appropriate sql. Our <strong>User</strong> class definition changes:</p>
+<pre><code>class User(Base):
+    __tablename__ = &quot;Users&quot;
+    id = Column(Integer, primary_key=True)
+    email = Column(String)
+    password = Column(String)
+
+    def __init__(self, email, password):
+        self.email = email
+        self.password = password</code></pre>
+<p>Given this, our ORM can <em>deduce</em> the original schema we generated earlier. The generation of the sql schema can be left to the software. Furthermore, our previous example can of changing a user's password can be done as follows:</p>
+<pre><code>chriszf = db.query(User).get(5)
+chriszf.password = &quot;mynewpassword&quot;
+db.commit()</code></pre>
+<p>The change_password function no longer exists in that form; it's existence is obviated as we can access columns directly as if they were object attributes, as long as we <em>commit</em> the database after every modification to an object. Overall, the amount of overhead code required to store data for an app dropped precipitously when ORMs first appeared, allowing lone programmers to single-handedly build a full-stack application in such short time periods.</p>
+<h2 id="chapter-0-in-which-we-choose-our-tools">Chapter 0: In Which We Choose our Tools</h2>
+<p>Let's start by cloning the repository from <a href="https://github.com/chriszf/ratings">github</a>.</p>
+<p>First, we'll choose our ORM.</p>
+<p>Just kidding, the choice has been made for you: you will use <a href="http://sqlalchemy.org">sqlalchemy</a>.</p>
+<p>There are other ORMs out there, each implementing the different ideas in Fowler's book slightly differently. We simplify the field by choosing sqlalchemy. The other primary competing ORM is the one that is bundled with (Django)[https://docs.djangoproject.com/en/dev/topics/db/queries/]. The one restriction is that it <em>cannot</em> be used outside of Django, so we won't consider it here.</p>
+<p>We'll continue to use Flask because it is suitable for our app, and we'll continue to use Python because I'm feeling generous, but we'll teach two new tools to help us out with using both: virtualenv and pip.</p>
+<p>You may have already seen pip, the python package installer. You find the name of the package you want, and type in</p>
+<pre><code>pip install package-name</code></pre>
+<p>To find the correct package name to use with pip, you might try to find the package in question on <a href="https://crate.io/">crate.io</a>, a package index. My usually methodology is, if I wander across a webpage that says, &quot;Use the beautiful soup package to parse html&quot;, I just try</p>
+<pre><code>pip install beautifulsoup</code></pre>
+<p>And it usually works out.</p>
+<p>If you try this now, you'll get a series of scary looking warnings followed by a 'permission denied' error. For the most part, you can ignore warnings. They're simply that you <em>might</em> be doing something wrong, which is always the case when you're a professional, so you can get comfortable letting them scroll by.</p>
+<p>Errors, on the other hand, are a different beast. They can't be ignored: something is wrong, we can proceed no further.</p>
+<p>When using pip (or its predecessor, easy_install), you'll find that the default usage, installing <em>any</em> package at all results in a 'permission denied' error. This is because of the way unix-like operating systems are laid out. Let's look at the folder structure of a typical unix system.</p>
+<pre><code>/            &lt;-- Top level of the file system.
+/usr
+/usr/local   &lt;-- Where python lives
+/lib
+/home
+/home/student                    &lt;-- Where your files live
+/home/student/fall2012/ratings   &lt;-- Where your project lives</code></pre>
+<p>Your files live under /home/student, and you're free to do whatever you like with those. Unfortunately, python lives in /usr/local, because it's a program that <em>everyone</em> using your machine can use. (Remember, a unix machine is by default a multi-user machine. It only <em>looks</em> like it's a single-user experience). To prevent you from messing with a shared program, you are prevented from writing to /usr/local, although reading from it is no problem.</p>
+<p>It would be difficult indeed if we could not install new packages at all without summoning the super-user to grant us access, but this is how development went for a long time on multi-user unix systems. Naturally, someone has devised a way around this, called virtualenv.</p>
+<p>Virtualenv installs a personal version of python in the directory where your project lives. This python is 'sandboxed', as you are free to do whatever you like with it with no consequences for other users. Go into the folder you cloned from github and type the following.</p>
+<pre><code>virtualenv env --no-site-packages</code></pre>
+<p>It should greet you with a success message shortly. This creates a 'virtual environment', your sandboxed python installation in the folder /home/student/fall2012/ratings/<strong>env</strong>. If you ls that directory, you'll find a 'bin' directory, amongst other things. Inside that bin directory is a copy of python.</p>
+<p>You can't run it just yet. If you type in 'python' right now, you'll get the standard system python, and not your copy. You can verify this by typing</p>
+<pre><code>which python</code></pre>
+<p>This command tells you exactly which copy of python you'll run when you type python into the shell. You have to trick your shell into preferring your copy first, by <em>activating</em> the virtual environment. From the <em>ratings</em> directory, type in</p>
+<pre><code>source env/bin/activate</code></pre>
+<p>This runs a script, <em>env/bin/activate</em>, that does all the trickery for you. If you type in the <strong>which python</strong> command again, you'll find that it reports something different. You'll also notice that your shell prompt has an (env) prepended to it, to indicate you're running inside a virtual environment. You can deactivate any time by typing</p>
+<pre><code>deactivate</code></pre>
+<p>But don't do this yet, we're going to be working on this project, so we might as well stay in it. Now, for the real reason we went through this process. Type in</p>
+<pre><code>pip install flask</code></pre>
+<p>This time, everything should work and you'll be greeted with success. Watch the warnings carefully, and look for a success or failure message at the bottom.</p>
+<p><strong>Now is an appropriate time to give someone a high five</strong>.</p>
+<p>Before we go installing things all willy-nilly, let's first install the packages that are required for this project. You'll find a file, requirements.txt in your cloned project directory. This file contains a list of all the packages we'll need. Right now, there are only a few. We could install them one by one by typing in a pip command for each, but we can also install the entire list:</p>
+<pre><code>pip install -r requirements.txt</code></pre>
+<p>Awesome.</p>
+<h2 id="chapter-1-in-which-we-investigate-our-data">Chapter 1: In Which We Investigate Our Data</h2>
+<p>The dataset we'll be using ins something called the <a href="http://www.grouplens.org/node/73">MovieLens 100k</a> dataset. It consists of 100,000 ratings of 1,700 movies from 1,000 users. We'll mine this data for correlations, but first we need to know what it looks like.</p>
+<p>The data has already been unpacked for you in the <em>seed_data</em> directory. Take a look now, the files of note are</p>
+<ul>
+<li>README</li>
+<li>u.data</li>
+<li>u.item</li>
+<li>u.user</li>
+</ul>
+<p>Spend a little bit trying to decipher the files before moving on. It will make it easier to remember that in this dataset, 'items' are movies.</p>
+<h3 id="u.data">u.data</h3>
+<p>According to the readme, u.data looks like this</p>
+<pre><code>user_id     movie_id     rating     timestamp</code></pre>
+<p>The data is in tabular format, the first column being a user id, the second being a movie id, the third being a rating (from 1 to 5). All three columns are integers. The fourth is a timestamp, also an integer, the number of seconds from January 1, 1970.</p>
+<h3 id="u.item">u.item</h3>
+<p>This data is also tabular -- there are too many columns to list here, so refer to the readme. The gist is that each line in this file has some movie id, and a bunch of attributes of that movie, including url, release date, imdb url, etc.</p>
+<h3 id="u.user">u.user</h3>
+<p>This file is information about the user, this time separated by vertical bars:</p>
+<pre><code>user_id | age | gender | occupation | zip_code</code></pre>
+<p>Stop here and think about how these three files constitute a model. I'll wait.</p>
+<div class="spoilers">
+If you caught the copious hints, you should be thinking that each of these files is a table in a database. Every one of the columns in the file is the same as a database column. To reconstruct an entire record, <em>who</em> rated <em>what</em> movie, we first go to the u.data table to get a user_id and a movie_id. We take those numbers and search their respective files for the row id that matches, then glue all three rows together.
+</div>
+
+<h2 id="chapter-2-in-which-we-build-our-database">Chapter 2: In Which We Build Our Database</h2>
+<p>Okay, so our data is in files and we need to put them into database tables. Great, we'll start writing a schema. Identify the tables we'll need to make, and sketch out the schema. Right now, we can throw out any genre data. We'll also add authentication data to the user schema, adding both an email and password, while making demographic information optional. Sketch out a rough schema as well as any relationships between the tables (has many, belongs to, etc).</p>
+<p>Going by our files, we can come up with the following skeleton</p>
+<div class="spoilers">
+
+<pre><code>User
+id: integer
+age: integer
+gender: string
+zip_code: string (technically zip codes aren&#39;t numeric)
+email: optional string
+password: optional string
+
+Movie:
+id: integer
+name: string
+released_at: datetime
+imdb_url: string
+
+Rating:
+id: integer
+movie_id: integer
+user_id: integer
+rating: integer
+
+A user has many ratings
+A rating belongs to a user
+A movie has many ratings
+A rating belongs to a movie
+A user has many movies through ratings
+A movie has many users through ratings</code></pre>
+</div>
+
+<p>Now, to write the sql.</p>
+<p>Well, not so fast. Writing schemas is hard work. Not only that, it's tedious work. It needs to be done, but it gets tricky remembering where all the parens and optional words go. No, we're better than that, we won't stoop to their level. We'll write <em>code</em> that writes our schemas for us.</p>
+<p>First, ls in your project directory. You should see a model.py file. Note the conspicuous absence of a database file. Not there? Good. We'll begin the alchemy.</p>
+<p>SQLAlchemy is powerful software, and the process it uses by which it transmutes python into sql and back is indeed alchemical. While it would be most excellent for you to <em>understand</em> exactly what's happening, at this stage we just need to be able use it reliably. Trust the incantations, then open your model.py file, and we'll start building our User model.</p>
+<p>We're going to be doing things backwards from the first time around. We'll start with our User class and a standard __init__ method.</p>
+<pre><code>class User(Base):
+    def __init__(self, age, zipcode, email = None, password = None):
+        self.email = email
+        self.password = password
+        self.age = age
+        self.zipcode = zipcode</code></pre>
+<p>We're making emails and passwords optional, so we're allowing them to be None if they're not provided during initialization. This seems reasonable so far, except for the fact that we inherit from the <strong>Base</strong> class, which is defined on line 5 as:</p>
+<pre><code>Base = declarative_base()</code></pre>
+<p>Now, we're beginning to cross the line from normal python into SQLAlchemy. The Base class is simply required for SQLALchemy's magic to work. Now, we'll add the rest. We'll add lines to the User class:</p>
+<pre><code>class User(Base):
+    __tablename__ = &quot;users&quot;
+
+    id = Column(Integer, primary_key = True)
+    email = Column(String(64), nullable=True)
+    password = Column(String(64), nullable=True)
+    age = Column(Integer, nullable=True)
+    zipcode = Column(String(15), nullable=True)
+
+    def __init__(self, age=None, zipcode=None, email = None, password = None):
+        self.email = email
+        self.password = password
+        self.age = age
+        self.zipcode = zipcode</code></pre>
+<p>We'll go over it line by line, but try not to find the deeper reasons for this syntax: this is a fairly non-standard use of python class attributes. It's allowed by the language definition, but ultimately, these lines we just added are SQLAlchemy specific and only make sense in that context. It's good to remember them, but it's equally good to remember how to look them up.</p>
+<p>The first line</p>
+<pre><code>__tablename__ = &quot;users&quot;</code></pre>
+<p>Simply informs SQLAlchemy that instances of this class will be stored in a table named <em>users</em>.</p>
+<p>The next,</p>
+<pre><code>id = Column(Integer, primary_key = True)</code></pre>
+<p>Tells SQLAlchemy to add a column to the table named 'id'. It will contain an integer, and be the 'primary key' for our table: it will uniquely identify every row in the table. The next line contains something slightly different</p>
+<pre><code>email = Column(String(64), nullable=True)</code></pre>
+<p>This behaves as you'd expect, with the exception of the 'nullable=True' part. That tells SQLAlchemy (and thus, SQLite) that this column is optional, it's allowed to be null/None. Since our ml-100k dataset is anonymized, we won't have any email addresses for any of the users we're given. However, to simplify things, we'll be using the same table to store <em>new</em> users who can log in via email, so we need to make the field available for them. An alternative solution would be to make the email column required, and generate fake emails for the anonymous users.</p>
+<p>The remaining columns follow in a similar fashion.</p>
+<p>So far, we haven't seen anything special happen, except some of our python was written weirdly. In our terminal window with the activated virtual environment, (reactivate it by going to your project directory and typing <strong>source bin/env/activate</strong> if you somehow lost it), run your model.py with the -i option:</p>
+<pre><code>python -i model.py</code></pre>
+<p>In your interactive python shell that results, type in</p>
+<pre><code>engine = create_engine(&quot;sqlite:///ratings.db&quot;, echo=True)</code></pre>
+<p>Something that appears to be a sql table schema will scroll by. Now, open a second terminal window and go to your project folder, do an <em>ls</em> to verify that ratings.db does not exist.</p>
+<p>In your first window, type the following:</p>
+<pre><code>Base.metadata.create_all(engine)</code></pre>
+<p>Back in your second window, do another <em>ls</em> You should see a ratings.db file. Invoke sqlite on this file, and investigate:</p>
+<pre><code>Meringue:ratings2 chriszf$ sqlite3 ratings.db
+SQLite version 3.7.7 2011-06-25 16:35:41
+Enter &quot;.help&quot; for instructions
+Enter SQL statements terminated with a &quot;;&quot;
+sqlite&gt; .mode columns
+sqlite&gt; .header on
+sqlite&gt; .tables
+users
+sqlite&gt; .schema users
+CREATE TABLE users (
+        id INTEGER NOT NULL, 
+        email VARCHAR(64), 
+        password VARCHAR(64), 
+        age INTEGER, 
+        zipcode VARCHAR(15), 
+        PRIMARY KEY (id)
+);
+sqlite&gt; </code></pre>
+<center>
+<p>Mind = <strong>blown</strong></p>
+<img src="http://tifr.us/storage/post-images/Tim-Eric-Mind-Blown-__SQUARESPACE_CACHEVERSION=1316658161000.gif">
+</center>
+
+<p>Quit both sqlite3 and python then delete your <em>ratings.db</em> file. Create a similar class for Movies and Ratings. Refer to the <a href="http://docs.sqlalchemy.org/en/rel_0_7/orm/tutorial.html">sqlalchemy tutorial</a> if necessary. When you're done, repeat the process of running <strong>Base.metadata.create_all()</strong> to create your tables. Reopen your sqlite3 database in your second window, making sure to turn headers on and switching the mode to columns.</p>
+<div class="spoilers">
+<p>SQLAlchemy uses a mechanism called 'introspection' where it can look inside a class, identify the attributes on it and what type they are, then use that to construct a sql schema.</p>
+We simply have to <em>declare</em> class attributes in a particular way on classes derived from the <em>Base</em> class provided for SQLAlchemy to do its introspection magic.
+</div>
+
+<h2 id="chapter-3-in-which-we-populate-our-tables">Chapter 3: In Which We Populate Our Tables</h2>
+<p>In SQLAlchemy parlance, we've created an engine. The terminology here is arbitrary: an 'engine' refers to an object that we use to connect to a database engine. The <em>engine</em> itself is not an engine, just a method to connect to one. This is not unlike calling <strong>sqlite3.connect()</strong> and using the object that was returned as a connection.</p>
+<p>After the connection, we need a 'handle' to interact with the database. In SQLAlchemy, this is called a 'session'. The session is analogous to the sqlite3 <em>cursor</em> we have been using. Add the following lines to the top of your model file, after the other imports:</p>
+<pre><code>from sqlalchemy.orm import sessionmaker
+
+ENGINE = None
+Session = None</code></pre>
+<p>And add the following function before the main function:</p>
+<pre><code>def connect():
+    global ENGINE
+    global Session
+
+    ENGINE = create_engine(&quot;sqlite:///ratings.db&quot;, echo=True)
+    Session = sessionmaker(bind=ENGINE)
+
+    return Session()</code></pre>
+<p>Here, <em>Session</em> is actually a class generated by SQLAlchemy, using the 'sessionmaker' function. This pattern is particular to SQLAlchemy and actually atypical python. The Session class describes how to interact with the database, but you can't use it directly. You need to instantiate sessions. At the end of <strong>connect</strong>, we do exactly that and return the instance, but any time you need a session <em>later</em>, you can just do</p>
+<pre><code>session = Session()</code></pre>
+<p>For now, load your model with</p>
+<pre><code>python -i model.py</code></pre>
+<p>Once you're in, type the following to create a session:</p>
+<pre><code>&gt;&gt;&gt; session = connect()</code></pre>
+<p>In your sqlite window, insert a new row into your users table:</p>
+<div class="spoilers">
+
+<pre><code>INSERT INTO users VALUES (null, &quot;c@hackbrightacademy.com&quot;, &quot;mypass&quot;, 29, &quot;94103&quot;);</code></pre>
+</div>
+
+<p>Now, we will transmute SQL into Python. First, query to see your shiny new record in sqlite:</p>
+<pre><code>sqlite&gt; select * from users;
+id          email                    password    age         zipcode   
+----------  -----------------------  ----------  ----------  ----------
+1           c@hackbrightacademy.com  mypass      29          94103     </code></pre>
+<p>Switch to your python window and type the following:</p>
+<pre><code>&gt;&gt;&gt; c = session.query(User).get(1)
+&gt;&gt;&gt; print c.email
+c@hackbrightacademy</code></pre>
+<p>The '1' in the first line is the id of the User we want to get from our table. If your database has a different id, use that instead. Let's update my password to be something more secure:</p>
+<pre><code>&gt;&gt;&gt; c.password = &quot;somethingmoresecure&quot;</code></pre>
+<p>Now, let's query the database to see if that worked:</p>
+<pre><code>sqlite&gt; select * from users;
+id          email                    password    age         zipcode   
+----------  -----------------------  ----------  ----------  ----------
+1           c@hackbrightacademy.com  mypass      29          94103     </code></pre>
+<p>Nothing! What gives? Well, like when we did raw sql (and not dissimilar to git), we need to commit data after we've modified it. In python:</p>
+<pre><code>&gt;&gt;&gt; session.commit()</code></pre>
+<p>And query again:</p>
+<pre><code>sqlite&gt; select * from users;
+id          email                    password    age         zipcode   
+----------  -----------------------  ----------  ----------  ----------
+1           c@hackbrightacademy.com  somethingm  29          94103     </code></pre>
+<p>SQLAlchemy took our python and <em>wrote</em> the appropriate SQL update query for us behind the scenes. This is a powerful idea, because now we can write programs, only worrying about the classes and data we're interested in, and not how to write the SQL we need to save it somewhere.</p>
+<center>
+<p><strong>Once more, for effect:</strong></p>
+<img src="http://tifr.us/storage/post-images/Tim-Eric-Mind-Blown-__SQUARESPACE_CACHEVERSION=1316658161000.gif">
+</center>
+
+<h3 id="reversing-directions">Reversing Directions</h3>
+<p>We inserted data in SQL, then got it back out on the python end, where we could update it. Now, let's do the reverse, where we insert data in from python. Let's make a record for Charles.</p>
+<pre><code>&gt;&gt;&gt; charles = User(&quot;charles@hackbrightacademy.com&quot;, &quot;notsecure&quot;, &quot;25&quot;, &quot;94103&quot;)</code></pre>
+<p>If we query the database, we get nothing:</p>
+<pre><code>sqlite&gt; select * from users;
+id          email                    password    age         zipcode   
+----------  -----------------------  ----------  ----------  ----------
+1           c@hackbrightacademy.com  somethingm  29          94103     </code></pre>
+<p>Right, we have to commit first. Actually, we have to do more than commit. Right now, we have a <em>User</em> object that we created in python, but that isn't reflected in the database immediately. There are times when we want to do exactly this, so SQLAlchemy forces us to be <em>explicit</em> when we want to insert something into the database as well. We do this by <em>adding</em> an object to our session. Here, the github parallel is particularly strong.</p>
+<pre><code>&gt;&gt;&gt; session.add(charles)
+&gt;&gt;&gt; session.commit()</code></pre>
+<p>Now, in sqlite, one more time:</p>
+<pre><code>sqlite&gt; select * from users;
+id          email                    password    age         zipcode   
+----------  -----------------------  ----------  ----------  ----------
+1           c@hackbrightacademy.com  somethingm  29          94103     
+2           charles@hackbrightacade  notsecure   25          94103     </code></pre>
+<p>Now that our object has been 'added' to the database, it is being tracked, and if we need to update it, we only need to commit after modifying it:</p>
+<pre><code># In python
+&gt;&gt;&gt; charles.password = &quot;moresecure&quot;
+&gt;&gt;&gt; session.commit()
+
+-- in sqlite
+sqlite&gt; select * from users where id=2;
+id          email                    password    age         zipcode   
+----------  -----------------------  ----------  ----------  ----------
+2           charles@hackbrightacade  moresecure  25          94103     </code></pre>
+<p>Let's do one more thing. We've so far relied on sqlite to assign unique ids to our users. We can force users to have a particular id.</p>
+<pre><code>&gt;&gt;&gt; david = User(&quot;d@hackbrightacademy.com&quot;, &quot;password&quot;, 26, &quot;94103&quot;)
+&gt;&gt;&gt; david.id = 5
+&gt;&gt;&gt; session.add(david)
+&gt;&gt;&gt; session.commit()</code></pre>
+<p>Then, querying for his record in sqlite:</p>
+<pre><code>sqlite&gt; select * from users where email=&#39;d@hackbrightacademy.com&#39;;
+id          email                    password    age         zipcode   
+----------  -----------------------  ----------  ----------  ----------
+5           d@hackbrightacademy.com  password    26          94103     </code></pre>
+<p>Experiment with adding, committing, and querying to make sure you understand how data goes into sqlite through python, and how to get it back out. Add new records on both the sqlite and python sides, and use <strong>.get()</strong> to get them back out. Change some fields, then commit them back and see how the columns get updated. Do this for all three tables, then get ready to wipe them out.</p>
+<h2 id="a-new-challenger-has-appeared">A New Challenger Has Appeared</h2>
+<p>Now we know how to insert single rows into the database, we have to <em>bulk insert</em> a bunch of our movie data. You'll find a file, seed.py, which contains a rough outline of what needs to happen. You'll need to open up the three files corresponding to the three tables, read each row in, parse it, then insert it into the database using our SQLAlchemy object interface.</p>
+<p>We've included the <a href="http://docs.python.org/2/library/csv.html">python csv</a> module, which may help you out in the process. You'll find examples of how to use it at the bottom of the link. Your general strategy should be as follows:</p>
+<ol style="list-style-type: decimal">
+<li>open a file</li>
+<li>read a line</li>
+<li>parse a line</li>
+<li>create an object</li>
+<li>add the object to a session</li>
+<li>commit</li>
+<li>repeat until done</li>
+</ol>
+<p>Each of the files is formatted slightly differently, so you'll need to write slightly different functions for each.</p>
+<p>Complete this, then move on to <a href="judgement2.html">part 2</a>.</p>
+</body>
+</html>
