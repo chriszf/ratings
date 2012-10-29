@@ -57,7 +57,7 @@ Row    &lt;-&gt;  Instance</code></pre>
     def __init__(self, email, password):
         self.email = email
         self.password = password</code></pre>
-<p>Given this, our ORM can <em>deduce</em> the original schema we generated earlier. The generation of the sql schema can be left to the software. Furthermore, our previous example can of changing a user's password can be done as follows:</p>
+<p>Given this, our ORM can <em>deduce</em> the original schema we generated earlier. The generation of the sql schema can be left to the software. Furthermore, our previous example of changing a user's password can be done as follows:</p>
 <pre><code>chriszf = db.query(User).get(5)
 chriszf.password = &quot;mynewpassword&quot;
 db.commit()</code></pre>
@@ -66,7 +66,7 @@ db.commit()</code></pre>
 <p>Let's start by cloning the repository from <a href="https://github.com/chriszf/ratings">github</a>.</p>
 <p>First, we'll choose our ORM.</p>
 <p>Just kidding, the choice has been made for you: you will use <a href="http://sqlalchemy.org">sqlalchemy</a>.</p>
-<p>There are other ORMs out there, each implementing the different ideas in Fowler's book slightly differently. We simplify the field by choosing sqlalchemy. The other primary competing ORM is the one that is bundled with (Django)[https://docs.djangoproject.com/en/dev/topics/db/queries/]. The one restriction is that it <em>cannot</em> be used outside of Django, so we won't consider it here.</p>
+<p>There are other ORMs out there, each implementing the different ideas in Fowler's book slightly differently. We simplify the field by choosing sqlalchemy. The other primary competing ORM is the one that is bundled with <a href="https://docs.djangoproject.com/en/dev/topics/db/queries/">Django</a>. The one restriction is that it <em>cannot</em> be used outside of Django, so we won't consider it here.</p>
 <p>We'll continue to use Flask because it is suitable for our app, and we'll continue to use Python because I'm feeling generous, but we'll teach two new tools to help us out with using both: virtualenv and pip.</p>
 <p>You may have already seen pip, the python package installer. You find the name of the package you want, and type in</p>
 <pre><code>pip install package-name</code></pre>
@@ -196,7 +196,7 @@ A movie has many users through ratings</code></pre>
 <pre><code>email = Column(String(64), nullable=True)</code></pre>
 <p>This behaves as you'd expect, with the exception of the 'nullable=True' part. That tells SQLAlchemy (and thus, SQLite) that this column is optional, it's allowed to be null/None. Since our ml-100k dataset is anonymized, we won't have any email addresses for any of the users we're given. However, to simplify things, we'll be using the same table to store <em>new</em> users who can log in via email, so we need to make the field available for them. An alternative solution would be to make the email column required, and generate fake emails for the anonymous users.</p>
 <p>The remaining columns follow in a similar fashion.</p>
-<p>So far, we haven't seen anything special happen, except some of our python was written weirdly. In our terminal window with the activated virtual environment, (reactivate it by going to your project directory and typing <strong>source bin/env/activate</strong> if you somehow lost it), run your model.py with the -i option:</p>
+<p>So far, we haven't seen anything special happen, except some of our python was written weirdly. In our terminal window with the activated virtual environment, (reactivate it by going to your project directory and typing <strong>source env/bin/activate</strong> if you somehow lost it), run your model.py with the -i option:</p>
 <pre><code>python -i model.py</code></pre>
 <p>In your interactive python shell that results, type in</p>
 <pre><code>engine = create_engine(&quot;sqlite:///ratings.db&quot;, echo=True)</code></pre>
