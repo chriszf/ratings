@@ -1,0 +1,195 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <title></title>
+  <link rel="stylesheet" href="normalize.css" type="text/css" />
+  <link rel="stylesheet" href="tutorial.css" type="text/css" />
+</head>
+<body>
+<h1 id="judgemental-eye-being-a-walkthrough-on-building-a-movie-rating-app">Judgemental Eye: Being a Walkthrough on Building a Movie Rating App</h1>
+<p>Already, SQLAlchemy has saved us a metric tonne of time setting up the connection between our python code and our database, but we haven't yet seen the most important part. In this section, we're going to look at how SQLAlchemy (abbreviated as SA, going forward) makes dealing with <em>relations</em> in our relational database much easier.</p>
+<p>Once all our data is in place, we can begin to analyze it. We'll use a technique called pearson correlation to measure how similar movies and users are to each other, and use that to predict a user's tastes.</p>
+<h2 id="chapter-0-in-which-we-practice-querying">Chapter 0: In Which We Practice Querying</h2>
+<p>One of the things which we haven't explored is SA's querying capabilities. The basic query is the 'get', which works by querying on primary keys. When you type something like this in python:</p>
+<pre><code>user = session.query(model.User).get(5)</code></pre>
+<p>It translates to the following SQL query:</p>
+<pre><code>select * from users where id = 5;</code></pre>
+<p>We can query on specific fields:</p>
+<pre><code># Returns the _first_ movie named Aladdin
+al = session.query(model.Movie).filter_by(title = &quot;Aladdin&quot;).first()</code></pre>
+<p>We can add multiple restrictions:</p>
+<pre><code># Returns one movie named Aladdin, released in 1992
+al = session.query(model.Movie).\
+            filter_by(title = &quot;Aladdin&quot;, 
+                      release_year = 1992).one() </code></pre>
+<p>(Before you complain, I'm fully aware we haven't made release_year a property of our Movie object.)</p>
+<p>We can get multiple results back:</p>
+<pre><code># Returns all movies named Aladdin
+al_list = session.query(model.Movie).filter_by(title=&quot;Aladdin&quot;).all()</code></pre>
+<p>The rules for doing these queries may seem complicated, but in reality, they're quite simple and consistent. We'll break up a query to see how it works:</p>
+<pre><code>query = session.query(model.Movie)
+query = query.filter_by(title = Aladdin)
+results = query.all()</code></pre>
+<p>In the first line, we create a query that works against the <em>movies</em> table. In essence, it sets up the 'select * from movies' part of a query.</p>
+<p>The second line adds a filter, which is directly analogous to the 'where' clause. Here, it translates to 'where title=&quot;Aladdin&quot;' part of the query line.</p>
+<p>Finally, the last line tells the query to execute and return the instance objects that match the query. The '.all()' part tells SA to return a list of all matching instances. There are two other methods that could be called instead, .first() and .one()</p>
+<pre><code>.all() - returns a list of all matching instances
+.first() - returns the first matching instance
+.one() - returns the _only_ matching instance if exactly one row
+         matches, throws an error if there are zero or more than 
+         one match.</code></pre>
+<p>Practice querying. In particular, see if you can figure out how to query a date range and select all movies between 1970 and 1973. As an extra exercise, use SA to write a query that matches all movies that begin with the letter 'q'. Use the <a href="http://docs.sqlalchemy.org/en/rel_0_7/orm/tutorial.html#querying">SA tutorial</a> on querying as a start.</p>
+<h2 id="chapter-1-in-which-we-wed-our-data-to-itself">Chapter 1: In Which We Wed Our Data to Itself</h2>
+<p>In the last tutorial, we came up with the following relations in our schema:</p>
+<pre><code>A user has many ratings
+A rating belongs to a user
+A movie has many ratings
+A rating belongs to a movie
+A user has many movies through ratings
+A movie has many users through ratings</code></pre>
+<p>Given our newfound querying abilities, can find the titles for all the movies user 35 has rated. Try this now in your interactive shell after running 'python -i model.py'.</p>
+<pre><code>user = session.query(model.User).get(35)
+ratings = session.query(model.Rating).filter_by(user_id=user.id).all()
+movies = []
+for r in ratings:
+    movie = session.query(model.Movie).get(r.movie_id)
+    movies.append(movie)
+
+for m in movies:
+    print movie.title</code></pre>
+<p>Not bad, but there's still a bit of code. Given one record in the user table, we have to manually query for the appropriate rows in the other two tables. On top of that, it requires 1 query to get the user, 1 query to get all of that user's ratings, and then N queries to get all of the movies. If you'll recall, we can use SQL joins to get all that data at once, but it's not obvious how joins fit into SA's mechanisms.</p>
+<p>SA has a mechanism called a 'relationship' that uses SQL joins, but hides the nitty-gritty from you. Let's update our model.py file. Add the following imports to the top of the file:</p>
+<pre><code>from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship, backref</code></pre>
+<p>We'll implement the relationship between Users and Ratings first: a User has many Ratings. Find your Rating model. If you imitated the examples from the previous exercise, it probably looks like this:</p>
+<pre><code>class Rating(Base):
+    __tablename__ = &quot;ratings&quot;
+    id = Column(Integer, primary_key = True)
+    user_id = Column(Integer)
+    movie_id = Column(Integer)
+    rating = Column(Integer)</code></pre>
+<p>Notice we don't have an __init__ method in this example. Instead, we're just using the <a href="http://docs.sqlalchemy.org/en/rel_0_7/orm/tutorial.html#declare-a-mapping">default SA init</a> that lets us use keyword arguments to initalize an object.</p>
+<p>Let's update the class:</p>
+<pre><code>class Rating(Base):
+    __tablename__ = &quot;ratings&quot;
+    id = Column(Integer, primary_key = True)
+    user_id = Column(Integer, ForeignKey(&#39;users.id&#39;))
+    movie_id = Column(Integer)
+    rating = Column(Integer)
+
+    user = relationship(&quot;User&quot;,
+            backref=backref(&quot;ratings&quot;, order_by=id))</code></pre>
+<p>Let's break this down. The first change is the new definition for the user_id.</p>
+<pre><code>    user_id = Column(Integer, ForeignKey(&#39;users.id&#39;))</code></pre>
+<p>The column is still an integer, but we're also declaring it to be a ForeignKey, which is just a fancy way of saying it references another column in another table. The parameter to ForeignKey is a string in the format of 'table.column_name'. Here, we're saying that the user_id column of the ratings table refers to the id column of the users table.</p>
+<pre><code>user = relationship(&quot;User&quot;,
+        backref=backref(&quot;ratings&quot;, order_by=id))</code></pre>
+<p>This line establishes a relationship between the Rating and User objects, along with something called a 'backref'. The up-front explanation is hard to grasp, so let's see it in action. Quit your python session and reload it and reconnect (you don't need to remake your tables or re-seed your database).</p>
+<pre><code>&gt;&gt;&gt; r = session.query(Rating).get(1)
+&gt;&gt;&gt; u = r.user
+&gt;&gt;&gt; print u.age
+49
+&gt;&gt;&gt; print u.zipcode
+55105
+&gt;&gt;&gt; print u.ratings
+[ &lt;class Rating&gt;, &lt;class Rating&gt; .... ]
+&gt;&gt;&gt; print u.ratings[0].id
+1
+&gt;&gt;&gt; print u.ratings[0].user_id
+196
+&gt;&gt;&gt; print u.ratings[0].movie_id
+242
+&gt;&gt;&gt; r == u.ratings[0]
+True</code></pre>
+<p>The relationship adds an attribute on ratings objects called <strong>user</strong>. This value of this attribute is the same object as if you had queried the database directly for that user. Furthermore, on a user object, there is an attribute named <strong>ratings</strong>. This attribute is a list of all the ratings associated with that user, simultaneously queried from the database.</p>
+<div class="note">
+<strong>Voodoo Power Hour</strong>: The relationship attribute defined on the Rating class just tells SA how it should construct the <em>join</em> clause of its SELECT statement. It then takes all the results and turns them into the correct objects.
+</div>
+
+<p><a href="http://docs.sqlalchemy.org/en/rel_0_7/orm/tutorial.html#building-a-relationship">Read more</a> about <a href="http://docs.sqlalchemy.org/en/rel_0_7/orm/relationships.html">SA relationships</a>, then convince yourself that it somehow is magically updating the database correctly. Try detaching a rating from a user and reattaching it to a different user, and monitor how the database updates.</p>
+<p>When you're done with that, add the other half of the relationship to the Movie object. Use the SA <a href="http://docs.sqlalchemy.org/en/rel_0_7/orm/relationships.html#association-object">association object pattern</a>. Use your Rating class as your association object.</p>
+<h2 id="chapter-2-in-which-we-weave-threads">Chapter 2: In Which We Weave Threads</h2>
+<p>Recall when we integrated sqlite3 directly with our Flask app, we had to do some shenanigans with the <strong>@before_request</strong> and <strong>teardown_request</strong>, along with the special global object <strong>g</strong> before we could use our database. This is because of something called <em>threading</em>.</p>
+<p>Threads are a mechanism for concurrency, a short description is that the program makes multiple copies of itself (each copy is called a thread) to support servicing multiple clients (you'll never have just <em>one</em> web user). The individual threads operate independently for the most part, but they share some variables between them. Great care must be taken to ensure that one the threads do not clobber the variables while others are accessing it. So without <em>locking</em> mechanisms, global variables are not considered <em>thread-safe</em>.</p>
+<p>In the previous exercise, the <strong>g</strong> variable had a hidden locking mechanism on it, so we were safe to put our database connection handle on it and use it with impunity.</p>
+<p>SQLAlchemy's primary use is with web applications, or more generally, multi-user applications, and so they would be remiss if they did not include a mechanism which guaranteed thread-safety. In SA, there is something called a scoped_session. How it works is somewhat beyond the scope of this tutorial, and in fact, most programmers in general. For now, simply <em>trust</em> that it takes care of our threading problems for us. Here is how we use it.</p>
+<p>First, change the import line in your model.py to include the scoped_session function.</p>
+<pre><code>from sqlalchemy.orm import sessionmaker, scoped_session</code></pre>
+<p>Next, let's take the contents of the <strong>connect</strong> function and <em>move them outside the function</em>.</p>
+<pre><code>from sqlalchemy.orm import sessionmaker, scoped_session
+
+engine = create_engine(&quot;sqlite:///ratings.db&quot;, echo=False)
+session = scoped_session(sessionmaker(bind=engine,
+                                      autocommit = False,
+                                      autoflush = False))
+
+Base = declarative_base()
+Base.query = session.query_property()</code></pre>
+<p>We'll turn the 'echo' parameter to create_engine to False, and we can now remove the connect() function entirely. Right now, you might be thinking <em>aaaaargh what does any of this mean how does this work I'm going to quit and become a hog farmer that seems easier</em>. Two points:</p>
+<ol style="list-style-type: decimal">
+<li>Hog farming is really hard. Like, <em>really</em> hard.</li>
+<li>How it works is unimportant. They're simply lines you <em>must</em> type in to use SA's scoped_session mechanism if you want to use your app in a multi-threaded app.</li>
+</ol>
+<p>You don't have to commit this to memory. You just have to remember it exists. For the purposes of this tutorial, I just copied it <a href="http://flask.pocoo.org/docs/patterns/sqlalchemy/">straight from a Flask documentation page</a>. That's okay, and you'll do this for a lot of things. What's important is knowing what you copied and why you copied it. SA is complex enough that you could spend days trying to understand how that works. It's an interesting mechanism, but ultimately, you have to decide that you've seen enough and move on.</p>
+<p>There is a side effect of this change. You no longer need to instantiate the Session class, as it doesn't exist. It's replaced with a session <em>object</em> that is somehow <em>always connected</em>. On top of that, this is safe to use this session directly without explicitly connecting to the database:</p>
+<pre><code>(env)Meringue:ratings2 chriszf$ python -i model.py
+&gt;&gt;&gt; u = session.query(User).get(1)
+&gt;&gt;&gt; u.id
+1
+&gt;&gt;&gt; u.age
+10</code></pre>
+<p>Notice, we didn't have to connect. We can just start querying the session directly. Cool beans.</p>
+<h2 id="chapter-3-in-which-we-tie-things-to-a-flask">Chapter 3: In Which We Tie Things To a Flask</h2>
+<p>So now we're ready to build the Flask portion of the app. We'll start simply, making a file <em>judgement.py</em>. To alleviate fears that you need to know everything, we will go ahead and admit that we are copying everything straight out of the <a href="http://flask.pocoo.org/">flask homepage</a>.</p>
+<pre><code>from flask import Flask
+app = Flask(__name__)
+
+@app.route(&quot;/&quot;)
+def hello():
+    return &quot;Hello World!&quot;
+
+if __name__ == &quot;__main__&quot;:
+    app.run()</code></pre>
+<p>Next we'll modify it to include the following things because we <em>always</em> need them:</p>
+<ul>
+<li>rendering templates</li>
+<li>our model</li>
+<li>access to the 'request' object (for forms)</li>
+<li>the ability to redirect</li>
+</ul>
+<p>We'll also change the 'hello' view to be called index (just by convention):</p>
+<pre><code>from flask import Flask, render_template, redirect, request
+import model
+
+@app.route(&quot;/&quot;)
+def index():
+    return &quot;Hello world!&quot;</code></pre>
+<p>Next, we'll modify the view to query all our users and list them:</p>
+<pre><code>@app.route(&quot;/&quot;)
+def index():
+    user_list = model.session.query(model.User).all()
+    return render_template(&quot;user_list.html&quot;, users=user_list)</code></pre>
+<p>Make a 'templates' directory, and add a user_list.html file to it:</p>
+<pre><code>&lt;html&gt;
+{% for user in user_list %}
+&lt;h2&gt;User {{ user.id }}, age {{ user.age }} has {{ len(user.ratings) }} ratings&lt;/h2&gt;
+{% endfor %}
+&lt;/html&gt;</code></pre>
+<p>Start your app by running:</p>
+<pre><code>python judgement.py</code></pre>
+<p>And access it by going to <a href="http://localhost:5000/">http://localhost:5000/</a> in your browser.</p>
+<p>By switching to SA, we've eliminated a good deal of boilerplate code that was necessary to interact with our database. Instead, we can directly use objects and their attributes without worry about how to query for them.</p>
+<h3 id="your-mission-should-you-choose-to-accept-it">Your mission, should you choose to accept it</h3>
+<p>Is to build out some CRUDL-style views for our User and Ratings objects. Here are some use cases:</p>
+<ul>
+<li>We should be able to create a new user (signup)</li>
+<li>We should be able to log in as a user</li>
+<li>We should be able to view a list of all users</li>
+<li>We should be able to click on a user and view the list of movies they've rated, as well as the ratings</li>
+<li>We should be able to, when logged in and viewing a record for a movie, either add or update a personal rating for that movie.</li>
+</ul>
+</body>
+</html>
