@@ -159,6 +159,7 @@ if __name__ == &quot;__main__&quot;:
 <li>our model</li>
 <li>access to the 'request' object (for forms)</li>
 <li>the ability to redirect</li>
+<li>turn on debug mode</li>
 </ul>
 <p>We'll also change the 'hello' view to be called index (just by convention):</p>
 <pre><code>from flask import Flask, render_template, redirect, request
@@ -166,7 +167,10 @@ import model
 
 @app.route(&quot;/&quot;)
 def index():
-    return &quot;Hello world!&quot;</code></pre>
+    return &quot;Hello world!&quot;
+
+if __name__ == &quot;__main__&quot;:
+    app.run(debug = True)</code></pre>
 <p>Next, we'll modify the view to query all our users and list them:</p>
 <pre><code>@app.route(&quot;/&quot;)
 def index():
@@ -191,5 +195,6 @@ def index():
 <li>We should be able to click on a user and view the list of movies they've rated, as well as the ratings</li>
 <li>We should be able to, when logged in and viewing a record for a movie, either add or update a personal rating for that movie.</li>
 </ul>
+<p>Do these, then move on to <a href="judgement3.html">step 3: judgement</a>.</p>
 </body>
 </html>
