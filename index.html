@@ -102,7 +102,7 @@ db.commit()</code></pre>
 <pre><code>pip install -r requirements.txt</code></pre>
 <p>Awesome.</p>
 <h2 id="chapter-1-in-which-we-investigate-our-data">Chapter 1: In Which We Investigate Our Data</h2>
-<p>The dataset we'll be using ins something called the <a href="http://www.grouplens.org/node/73">MovieLens 100k</a> dataset. It consists of 100,000 ratings of 1,700 movies from 1,000 users. We'll mine this data for correlations, but first we need to know what it looks like.</p>
+<p>The dataset we'll be using is something called the <a href="http://www.grouplens.org/node/73">MovieLens 100k</a> dataset. It consists of 100,000 ratings of 1,700 movies from 1,000 users. We'll mine this data for correlations, but first we need to know what it looks like.</p>
 <p>The data has already been unpacked for you in the <em>seed_data</em> directory. Take a look now, the files of note are</p>
 <ul>
 <li>README</li>
@@ -181,7 +181,7 @@ A movie has many users through ratings</code></pre>
     age = Column(Integer, nullable=True)
     zipcode = Column(String(15), nullable=True)
 
-    def __init__(self, age=None, zipcode=None, email = None, password = None):
+    def __init__(self, email = None, password = None, age=None, zipcode=None):
         self.email = email
         self.password = password
         self.age = age
@@ -200,8 +200,8 @@ A movie has many users through ratings</code></pre>
 <pre><code>python -i model.py</code></pre>
 <p>In your interactive python shell that results, type in</p>
 <pre><code>engine = create_engine(&quot;sqlite:///ratings.db&quot;, echo=True)</code></pre>
-<p>Something that appears to be a sql table schema will scroll by. Now, open a second terminal window and go to your project folder, do an <em>ls</em> to verify that ratings.db does not exist.</p>
-<p>In your first window, type the following:</p>
+<p>Now, open a second terminal window and go to your project folder, do an <em>ls</em> to verify that ratings.db does not exist.</p>
+<p>In your first window, type the following, and something that appears to be a sql table schema will scroll by.</p>
 <pre><code>Base.metadata.create_all(engine)</code></pre>
 <p>Back in your second window, do another <em>ls</em> You should see a ratings.db file. Invoke sqlite on this file, and investigate:</p>
 <pre><code>Meringue:ratings2 chriszf$ sqlite3 ratings.db
@@ -341,6 +341,15 @@ id          email                    password    age         zipcode
 <li>repeat until done</li>
 </ol>
 <p>Each of the files is formatted slightly differently, so you'll need to write slightly different functions for each.</p>
+<h2 id="addendum-unicode">Addendum: Unicode</h2>
+<p>Unicode is kind of tough to grasp. It's a collection of 'code points' that represent all the known characters in use in modern language, whether it's the western alphabet, or Asian kana systems. The concept of code points is really irrelevant to our discussions. The most important thing is that a unicode string is capable of representing any character in any syllabary we have a font for.</p>
+<p>The thing is, having this kind of flexibility requires a lot of space. In good, old ascii, letters are any one of 52 numbers, both upper and lower case. Add in other symbols on the keyboard, a few symbols <em>not</em> on the keyboard, and still everything fits in a single byte. Each character only needed a single byte to represent it. A string of 30 characters needed 30 bytes total to store.</p>
+<p>With unicode, there are 1,114,112 code points, usually represented by 4 bytes per character. This means in unicode, a 30 character string needs 120 bytes for storage. Generally, unicode is not a good way to <em>store</em> text, although it's a great way to represent text in general.</p>
+<p>Typically, you won't need all 1 million code points in any given text, so encodings exist that allow us to store text and optimize for a particular subset of the code points. When we need to share text between components, we need to take our encoded text and decode it back into unicode before sending it back.</p>
+<p>In our scenario, a text file is encoded in the 'latin-1' encoding, to allow us to use an accent mark in our movie titles. Our sqlite3 database, on the other hand, expects to receive unicode strings from our python code, so we need to decode from latin-1 back into unicode:</p>
+<pre><code>title = row[3]
+title = title.decode(&quot;latin-1&quot;)</code></pre>
+<p>After this, our 'title' variable is a string that stores data as unicode code points, and can be safely passed off to sqlite3.</p>
 <p>Complete this, then move on to <a href="judgement2.html">part 2</a>.</p>
 </body>
 </html>
