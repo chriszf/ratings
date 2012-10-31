@@ -1,3 +1,3 @@
 Judgemental Eye: A Movie Rating App
 ===================================
-Head on over to [the tutorial](http://chriszf.github.com/ratings) for instructions.
+[Reference implementation](http://intense-bastion-5418.herokuapp.com/)
