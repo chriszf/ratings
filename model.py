@@ -4,10 +4,10 @@ from sqlalchemy import Column, Integer, String, DateTime, Date
 
 from sqlalchemy.orm import sessionmaker, scoped_session, relationship, backref
     
-engine = create_engine("sqlite:///ratings.db", echo=False) 
-session = scoped_session(sessionmaker(bind=engine,
-                         autocommit = False,
-                         autoflush = False))
+#engine = create_engine("sqlite:///ratings.db", echo=False) 
+#session = scoped_session(sessionmaker(bind=engine,
+#                         autocommit = False,
+#                         autoflush = False))
 
 Base = declarative_base()
 Base.query = session.query_property
