@@ -24,7 +24,7 @@ class User(Base):
     email = Column(String(64), nullable=True)
     password = Column(String(64), nullable=True)        
     age = Column(Integer, nullable=True)
-    zipcode = Column(Integer, nullable=True)
+    zipcode = Column(String(15), nullable=True)
     gender = Column(String(1), nullable=True)
 
 class Rating(Base):
