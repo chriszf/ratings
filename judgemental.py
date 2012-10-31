@@ -2,6 +2,7 @@ from flask import Flask, session, request, render_template, flash, redirect, url
 from model import session as db_session, User, Rating, Movie
 import model
 from flask_heroku import Heroku
+import os
 
 app = Flask(__name__)
 heroku = Heroku(app)
