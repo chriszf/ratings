@@ -3,11 +3,14 @@ from sqlalchemy import create_engine, ForeignKey
 from sqlalchemy import Column, Integer, String, DateTime, Date
 
 from sqlalchemy.orm import sessionmaker, scoped_session, relationship, backref
+import os
+
+db_uri = os.environ.get("DATABASE_URL", "sqlite:///ratings.db")
     
-#engine = create_engine("sqlite:///ratings.db", echo=False) 
-#session = scoped_session(sessionmaker(bind=engine,
-#                         autocommit = False,
-#                         autoflush = False))
+engine = create_engine(db_uri, echo=False) 
+session = scoped_session(sessionmaker(bind=engine,
+                         autocommit = False,
+                         autoflush = False))
 
 Base = declarative_base()
 Base.query = session.query_property
