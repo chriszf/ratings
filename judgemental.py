@@ -61,7 +61,7 @@ def display_search():
 def search():
     query = request.form['query']
     movies = db_session.query(Movie).\
-            filter(Movie.title.like("%" + query + "%")).\
+            filter(Movie.title.ilike("%" + query + "%")).\
             limit(20).all()
 
     return render_template("results.html", movies=movies)
