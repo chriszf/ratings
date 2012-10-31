@@ -7,4 +7,5 @@ WTForms==1.0.2
 Werkzeug==0.8.3
 dj-database-url==0.2.1
 flask-heroku==0.1.3
+psycopg2==2.4.5
 wsgiref==0.1.2
