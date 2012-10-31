@@ -1,0 +1,358 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <title></title>
+  <link rel="stylesheet" href="normalize.css" type="text/css" />
+  <link rel="stylesheet" href="tutorial.css" type="text/css" />
+</head>
+<body>
+<h1 id="judgemental-eye-being-a-walkthrough-on-building-a-movie-rating-app">Judgemental Eye: Being a Walkthrough on Building a Movie Rating App</h1>
+<p>By this time, our judgemental app should be approaching feature completion for a basic version. Check out the <a href="http://intense-bastion-5418.herokuapp.com/">reference version</a> and the <a href="https://github.com/chriszf/ratings/tree/deployed">source</a> to determine the minimum app you need to build.</p>
+<p>You may be wondering at this point, where the judgement comes into play with the judgemental eye. Well, wonder no more. We're going to build it.</p>
+<h2 id="chapter-0-in-which-we-learn-to-judge">Chapter 0: In Which We Learn To Judge</h2>
+<p>The core to the concept of the 'judgemental eye' is something called the <em>Pearson correlation</em>. The Pearson correlation is a way to judge how similar two things are to each other, based on some arbitrary shared number. An abstract definition is difficult to grasp, so we'll look at a simple example using film ratings.</p>
+<pre><code>Movies:     Movie A     Movie B
+User 1:        5           3
+User 2:        5           3</code></pre>
+<p>Let's say we wanted to produce a number that indicated how similar User 1 was to User 2. Arbitrarily, we'll choose a scale from -1 to 1, with -1 being complete opposites, and 1 being twins in terms of similarity. Looking at our table above, we can intuit that because they have identical ratings for the two movies in question, they're a 1.0 in terms of similarity on our scale. Let's expand the table.</p>
+<pre><code>Movies:     Movie A     Movie B     Movie C
+User 1:        5           3           4
+User 2:        5           3           5
+User 3:        -           3           5</code></pre>
+<p>In our new table, we have new information, and can make new statements about our users and movies. User 1 and User 2 are still very similar, but for Movie C, they have differing ratings. The difference in that rating isn't much, and when taken as a whole with the other two movies, User 1 really isn't all that different from User 2. They're not a perfect 1.0 anymore, but close, perhaps above a 0.9. On the other hand, for the two movies they have in common, User 2 and User 3 have identical ratings. User 3 doesn't have an entry for Movie A, perhaps because they haven't seen it, but as far as we know, User 2 and User 3 have exactly the same tastes, and are a 1.0 in terms of similarity.</p>
+<p>Let's transpose the table, putting movies on the Y-axis, and users on the X-axis:</p>
+<pre><code>Users:      User 1      User 2      User 3
+Movie A:        5           5           -
+Movie B:        3           3           3
+Movie C:        4           5           5</code></pre>
+<p>Looking at it this way, we can extract some slightly different data. Comparing the ratings across rows, we can see that for the users who've seen it, Movie A is very similar to Movie C. The users the two movies have in common have rated the movie similarly. On the other hand, Movie B is not especially similar to either Movie A or Movie C; there doesn't seem to be much of a correlation at all. It's hard to say, based on the rows, whether liking Movie C is any indication of liking Movie B.</p>
+<p>Let's look at one more table:</p>
+<pre><code>Movies:     Movie A     Movie B     Movie C
+User 1:        5           3           4
+User 2:        5           3           5
+User 3:        -           3           5
+User 4:        1           3           2
+User 5:        2           2           2</code></pre>
+<p>User 4 seems to have completely opposite ratings from User 1, consistently so. This is an example of a users who have negative correlations, a full -1.0. They're predictably opposite each other for all the movies that they've both seen. User 5, on the other hand, rates completely independently from User 1. User 1 rating something high doesn't give any indication of whether User 5 will rate low or high.</p>
+<p>We can take this idea and formalize it. For any row in these tables, similarity can be determined by how <em>close</em> their ratings are to each other for the any columns they have in common. Specifically, we can determine closeness of two ratings by subtracting one from the other. If we take those deltas and square them, then do some clever arithmetic to normalize the number so that it falls between -1 and 1, we get the Pearson correlation:</p>
+<pre><code># Calculate the pearson score
+num_critics = len(common_critics)
+num = product_sum - ((film1_sum * film2_sum)/num_critics)
+den = sqrt((film1_sum_square - pow(film1_sum, 2) / num_critics) * \
+    (film2_sum_square - pow(film2_sum, 2)/num_critics))
+pearson = num/den</code></pre>
+<p><strong>Now this is critical:</strong> derive the Pearson correlation from first principles on a whiteboard.</p>
+<p>Just kidding. Here's an example of a piece of code we don't need to fully understand. From a high level, it finds all the common columns between two rows in our data table, takes the difference between the two, and blends it into a fraction between -1 and 1 that represents the similarity between the rows. That's sufficient to understand how to use it. In fact, we can go even higher and still be able to use this function: if we feed two lists of ratings into a Pearson function, we get a number that represents similarity. You'll find an implementation of the Pearson correlation in correlation.py. You'll want to import this file from your model.py file.</p>
+<p>Obviously, it's difficult to draw broad, sweeping generalizations based off of 15 datapoints. Fortunately, we have close to 100,000 datapoints, courtesy of the ML-100k dataset. With bigger datasets, we can make more accurate and definitive claims about how users and movies are similar to each other.</p>
+<h3 id="so-what">So What?</h3>
+<p>Imagine that you know User A and User B have a correlation of 1.0 over the span of 20 movies: they vote identically for the things that are common between them. User A now watches some movie X and rates it a 5. What would you expect User B to rate the same movie?</p>
+<p>It's only sensible that expect that User B will also rate it a 5, given their history. Using this knowledge, we can predict how a user will rate a movie simply by finding another user with a high correlation coefficient who has seen the movie in question. The first user's rating will likely be somewhere in the region of the second user. The converse is true: if we find a user with a negative correlation, we can just take <em>their</em> rating and invert it.</p>
+<p>Using this, we can now build the <strong>Judgemental Eye</strong>.</p>
+<h2 id="chapter-1-in-which-we-teach-a-computer-to-love...-and-hate.">Chapter 1: In Which We Teach a Computer to Love... and Hate.</h2>
+<p>The Judgemental Eye is a malevolent being whose sole purpose in life is to pass judgement on people's movies tastes. Here is the behavior of the Eye:</p>
+<ol style="list-style-type: decimal">
+<li>When a user views a movie they haven't rated, the Eye predicts how that user will rate that movie.</li>
+<li>Once a user has either rated the movie or received a prediction, the Eye will find its own rating for that movie, predicting the number if it has to.</li>
+<li>The Eye will take the difference of the two ratings, and criticize the user for their tastes.</li>
+</ol>
+<p>All of this hinges on a way to guess how a person (the user, or <strong>The Eye</strong>) would rate a movie. If the person has already rated the movie, we can just use that number. If they haven't, we have to guess. Here's the process for guessing:</p>
+<ol style="list-style-type: decimal">
+<li>Given a user U who has not rated movie X, find all <em>other</em> users who have rated that movie.</li>
+<li>For each other user O, find the movies they have rated in common with user U.</li>
+<li>Pair up the common movies, then feed each pair list into the pearson function to find similarity S.</li>
+<li>Rank the users by their similarities, and find the user with the highest similarity, O'.</li>
+<li>Multiply the similarity coefficient of user O' with their rating for movie X. This is your predicted rating.</li>
+</ol>
+<p>In a simple case, if user U needs a prediction for Toy Story, we first find everyone else who has seen Toy Story, and collect all their movie ratings. Using their ratings, we can run a pearson correlation and find user V who rates movies very similarly to user U, with a coefficient of 0.9. If user V rated Toy Story at 5 stars, it's not unreasonable to guess that user U will rate it at 5 * 0.9 = 4.5 stars.</p>
+<p>It sounds complicated, but we'll break down each step in code. Start python, loading your model file in interactive mode (python -i model.py). First, we'll grab a user who hasn't seen Toy Story, as well as the movie record itself. For the purpose of this example, we know the user with id 1 hasn't rated it.</p>
+<h3 id="step-1">Step 1</h3>
+<pre><code>&gt;&gt;&gt; m = session.query(Movie).filter_by(title=&quot;Toy Story&quot;).one()
+&gt;&gt;&gt; u = session.query(User).get(1)</code></pre>
+<p>Now, we need to get a list of his ratings</p>
+<pre><code>&gt;&gt;&gt; ratings = u.ratings</code></pre>
+<p>Next, we need to get a list of other users who <em>have</em> rated the movie:</p>
+<pre><code>&gt;&gt;&gt; other_ratings = session.query(Rating).filter_by(movie_id=m.id).all()
+&gt;&gt;&gt; other_users = []
+&gt;&gt;&gt; for r in other_ratings:
+...     other_users.append(r.user)</code></pre>
+<h3 id="steps-2-3">Steps 2, 3</h3>
+<p>We'll need to go through each user and find the movies they have in common in with our first user to be able to use our pearson function:</p>
+<pre><code>&gt;&gt;&gt; &quot;&quot;&quot;
+User A:
+    Movie 1: 5
+    Movie 2: 3
+    Movie 3: 4
+    Movie 4: 2
+
+User B:
+    Movie 1: 5
+    Movie 2: 3
+    Movie 4: 3
+
+We collect the common movies, 1,2 and 4, and group them by pairs. The first element in the pair is user A&#39;s rating. The second is user B&#39;s. It doesn&#39;t matter what order the movies are paired in as long as they match up.
+&quot;&quot;&quot;
+&gt;&gt;&gt; import correlation
+&gt;&gt;&gt; rating_pairs = [(5, 5), (3, 3), (2, 3)]
+&gt;&gt;&gt; print correlation.pearson(rating_pairs)
+0.944911182523</code></pre>
+<p>At this point, I encourage you to figure out how to generate that pair list on your own and skip straight to step 4. If you need a little assistance, read on.</p>
+<p>From before, we have our user <strong>u</strong>, and our list of other users, <strong>other_users</strong>. First, let's peel off a single user from the list to test against.</p>
+<pre><code>&gt;&gt;&gt; o = other_users[0]</code></pre>
+<p>Now, we want to go through <em>o.ratings</em> and find out if any of those ratings pair up with our first user's ratings. We could do something naive like this:</p>
+<pre><code>&gt;&gt;&gt; paired_ratings = []
+&gt;&gt;&gt; for r1 in u.ratings:
+...     for r2 in o.ratings:
+...         if r1.movie_id == r2.movie_id:
+...             paired_ratings.append( (r1.rating, r2.rating) )</code></pre>
+<p>The problem with this is that it is what we call O(n^2) performance. Assume that user u has N ratings, and user o has N ratings as well. The two loops in this example tell the computer to loop through u.ratings, and for each rating in that list, loop through o.ratings to find a match, based on movie_id of each rating. This means it has to loop N * N times to go through all the rating pairs. If they both have a lot of ratings, this query could potentially take a long time. Let's try something different with dictionaries. Experiment first on your own.</p>
+<div class="spoilers">
+
+<pre><code>&gt;&gt;&gt; u_ratings = {}
+&gt;&gt;&gt; for r in u.ratings:
+...     u_ratings[ r.movie_id ] = r
+&gt;&gt;&gt; paired_ratings = []
+&gt;&gt;&gt; for o_rating in o.ratings:
+...     u_rating = u_ratings.get(o_rating.movie_id)
+...     if u_rating:
+...         pair = (u_rating.rating, o_rating.rating)
+...         paired_ratings.append(pair)</code></pre>
+</div>
+
+<p>This example requires a bit more code, but not too much more. The first thing it does is create a dictionary, and loop through u.ratings, putting every rating in the dictionary, using the movie_id for that rating as the key. Second, it loops through o.ratings, then checks to see if there's a record in the dictionary that matches the movie_id. That would mean that the user u <em>also</em> rated the movie in question. If they did, then just put that pair of ratings in our pair list. This is useful, and we're going to do this once for each user, so we should put it in a function. We should also feed the pair list to the pearson() function at the end, if there's at least one pair in it. We could put this as a free-standing function in the model file:</p>
+<div class="spoilers">
+
+<pre><code>import correlation 
+
+...
+
+def similarity(user1, user2):
+    u_ratings = {}
+    paired_ratings = []
+    for r in user1.ratings:
+        u_ratings[r.movie_id] = r
+
+    for r in user2.ratings:
+        u_r = u_ratings.get(r.movie_id)
+        if u_r:
+            paired_ratings.append( (u_r.rating, r.rating) )
+
+    if paired_ratings:
+        return correlation.pearson(paired_ratings)
+    else:
+        return 0.0</code></pre>
+</div>
+
+<p>But, we can do one better. Since this function returns the similarity of users, we can put this on the User class.</p>
+<div class="spoilers">
+
+<pre><code>class User(Base):
+    ...
+
+    def similarity(self, other):
+        u_ratings = {}
+        paired_ratings = []
+        for r in self.ratings:
+            u_ratings[r.movie_id] = r
+
+        for r in other.ratings:
+            u_r = u_ratings.get(r.movie_id)
+            if u_r:
+                paired_ratings.append( (u_r.rating, r.rating) )
+
+        if paired_ratings:
+            return correlation.pearson(paired_ratings)
+        else:
+            return 0.0</code></pre>
+</div>
+
+<p>Now, we can do this in an interactive shell:</p>
+<pre><code>&gt;&gt;&gt; u1 = session.query(User).get(1)
+&gt;&gt;&gt; u2 = session.query(User).get(2)
+&gt;&gt;&gt; print u1.similarity(u2)
+0.16084123285437085</code></pre>
+<h3 id="step-4-and-5">Step 4 and 5</h3>
+<p>Given a list of users, we can find their similarity coefficients:</p>
+<pre><code>&gt;&gt;&gt; m = session.query(Movie).filter_by(title=&quot;Toy Story&quot;).one()
+&gt;&gt;&gt; u = session.query(User).get(1)
+&gt;&gt;&gt; ratings = u.ratings
+&gt;&gt;&gt; other_ratings = session.query(Rating).filter_by(movie_id=m.id).all()
+&gt;&gt;&gt; other_users = []
+&gt;&gt;&gt; for r in other_ratings:
+...     other_users.append(r.user)
+
+&gt;&gt;&gt; for other_u in other_users:
+        print u.similarity(other_u)</code></pre>
+<p>Now, we want to rank them. Again, there are a lot of ways to do this, and you should try on your own, but read on for hints.</p>
+<p>The easiest way to rank users is by using the built-in tuple sort mechanism:</p>
+<div class="spoilers">
+
+<pre><code>&gt;&gt;&gt; users = []
+&gt;&gt;&gt; for other_u in other_users:
+...     similarity = u.similarity(other_u)
+...     pair = (similarity, other_u)
+...     users.append(pair)
+&gt;&gt;&gt; sorted_users = sorted(users, reverse=True)
+&gt;&gt;&gt; top_user = sorted_users[0]</code></pre>
+</div>
+
+<p>Given the top user, we can then use the similarity coefficient to make a prediction.</p>
+<div class="spoilers">
+
+<pre><code>&gt;&gt;&gt; sim, best_match = top_user
+&gt;&gt;&gt; best_rating = session.query(Rating).filter_by(movie_id = m.id, user_id = best_match.id).one()
+&gt;&gt;&gt; predicted_rating = sim * best_rating.rating</code></pre>
+</div>
+
+<p>Let's take this all and put this in a function, again in model.py.</p>
+<div class="spoilers">
+
+<pre><code>def predict_rating(user, movie):
+    ratings = user.ratings
+    other_ratings = movie.ratings
+    other_users = [ r.user for r in other_ratings ]
+    similarities = [ (user.similarity(other_user), other_user) \
+        for other_user in other_users ]
+    similarities.sort(reverse = True)
+    top_user = similarities[0]
+    matched_rating = None
+    for rating in other_ratings:
+        if rating.user_id == top_user[1].id
+            matched_rating = rating
+            break
+    return matched_rating.rating * top_user[0]</code></pre>
+</div>
+
+<p>Take a look at this function. It's slightly different from the console commands we typed in. We use <a href="http://docs.python.org/2/tutorial/datastructures.html#list-comprehensions">list comprehensions</a>, which are a way to combine certain types of for-loops and lists. On top of that, instead of querying the database for the matching rating record, we just search through the list we already have. Make sure you're comfortable lining up the 'experimental version' with the final version before moving on.</p>
+<p>Once again, since this is a method pertaining to users and movies, it makes sense to be an instance method. The question is, does it go on the user instance or the movie instance? In this case, it's English to the rescue. A user will predict their rating of a given movie, so we'll put it there.</p>
+<div class="spoilers">
+
+<pre><code>class User(Base):
+    ...
+
+    def predict_rating(self, movie):
+        ratings = self.ratings
+        other_ratings = movie.ratings
+        other_users = [ r.user for r in other_ratings ]
+        similarities = [ (self.similarity(other_user), other_user) \
+            for other_user in other_users ]
+        similarities.sort(reverse = True)
+        top_user = similarities[0]
+        matched_rating = None
+        for rating in other_ratings:
+            if rating.user_id == top_user[1].id:
+                matched_rating = rating
+                break
+        return matched_rating.rating * top_user[0]</code></pre>
+</div>
+
+<p>And again, we can do something like this:</p>
+<pre><code>&gt;&gt;&gt; u = session.query(User).get(1)
+&gt;&gt;&gt; m = session.query(Movie).get(300)
+&gt;&gt;&gt; print u.predict(m)
+1.0000000000000013</code></pre>
+<p>Note, this may take a long time to run, as a lot of queries are being made. But now, we have a simply interface to predict how a user will rate a movie.</p>
+<h3 id="bonus-round">BONUS ROUND</h3>
+<p>We have a lot of ratings and similarities that we're throwing away, when we could really do something with them. The multiplication of rating and similarity is useful, even for users who have <em>negative</em> similarities. If you find a user who has a -1 similarity who rated a movie at 5, there's a fair chance you'd rate that movie a 1. Using maths, we can <em>blend</em> all the similarities and ratings together. Try to build a more accurate prediction formed from all the ratings we have using a weighted average.</p>
+<h2 id="chapter-2-in-which-we-make-our-app-predictive">Chapter 2: In Which We Make Our App Predictive</h2>
+<p>To add prediction to our app, we simply have to, when a user views a movie, call the prediction function and display the results. In the reference implementation, the view we want to modify is <strong>view_movie</strong>.</p>
+<div class="spoilers">
+
+<pre><code>@app.route(&quot;/movie/&lt;int:id&gt;&quot;, methods=[&quot;GET&quot;])
+def view_movie(id):
+    movie = db_session.query(Movie).get(id)
+    ratings = movie.ratings
+    rating_nums = []
+    user_rating = None
+    for r in ratings:
+        if r.user_id == session[&#39;user_id&#39;]:
+            user_rating = r
+        rating_nums.append(r.rating)
+    avg_rating = float(sum(rating_nums))/len(rating_nums)
+
+    # Prediction code: only predict if the user hasn&#39;t rated it.
+    user = db_session.query(User).get(session[&#39;user_id&#39;])
+    prediction = None
+    if not user_rating:
+        prediction = user.predict_rating(movie)
+    # End prediction
+
+    return render_template(&quot;movie.html&quot;, movie=movie, 
+            average=avg_rating, user_rating=user_rating,
+            prediction=prediction)</code></pre>
+</div>
+
+<p>Then, we can add an if statement in our template, movie.html, that shows the prediction if it exists:</p>
+<div class="spoilers">
+
+<pre><code>{% if prediction %}
+&lt;h3&gt;We predict you will rate this movie {{prediction}}.&lt;/h3&gt;
+{% endif %}</code></pre>
+</div>
+
+<p>And we're done!</p>
+<p>...</p>
+<h2 id="chapter-3-in-which-we-build-a-being-of-pure-malice">Chapter 3: In Which We Build a Being of Pure Malice</h2>
+<p>Everything is now in place to build <strong>The Eye</strong>. Hopefully, you can guess how, but we'll do this step by step.</p>
+<p>In terms of our system, <strong>The Eye</strong> is just a user with bad taste in movies. Every time you view a movie, <strong>The Eye</strong> will either get its rating or predict its own rating for the same movie, then it will berate you endlessly for how dissimilar your tastes run, based on the difference between your ratings.</p>
+<p>The first thing to do is create a user to be the judgemental eye. It can be an existing user, a real user, or an imaginary user. As an example, we'll make a new user. Running model.py in interactive mode:</p>
+<pre><code>&gt;&gt;&gt; eye = User(email=&quot;theeye@ofjudgement.com&quot;, password=&quot;securepass&quot;)
+&gt;&gt;&gt; session.add(eye)
+&gt;&gt;&gt; session.commit()
+&gt;&gt;&gt; session.refresh(eye)</code></pre>
+<p>Next, we'll choose some movies</p>
+<pre><code>&gt;&gt;&gt; m1 = session.query(Movie).get(1) # toy story
+&gt;&gt;&gt; m2 = session.query(Movie).get(1274) # robocop 3
+&gt;&gt;&gt; m3 = session.query(Movie).get(373) # Judge dredd
+&gt;&gt;&gt; m4 = session.query(Movie).get(314) # 3 ninjas
+&gt;&gt;&gt; m5 = session.query(Movie).get(95) # aladdin
+&gt;&gt;&gt; m6 = session.query(Movie).get(71) # the lion king</code></pre>
+<p>And then we'll rate those movies</p>
+<pre><code>&gt;&gt;&gt; r = Rating(user_id = eye.id, movie_id=m1.id, rating=1)
+&gt;&gt;&gt; session.add(r)
+&gt;&gt;&gt; r = Rating(user_id = eye.id, movie_id=m2.id, rating=5)
+&gt;&gt;&gt; session.add(r)
+&gt;&gt;&gt; r = Rating(user_id = eye.id, movie_id=m3.id, rating=5)
+&gt;&gt;&gt; session.add(r)
+&gt;&gt;&gt; r = Rating(user_id = eye.id, movie_id=m4.id, rating=5)
+&gt;&gt;&gt; session.add(r)
+&gt;&gt;&gt; r = Rating(user_id = eye.id, movie_id=m5.id, rating=1)
+&gt;&gt;&gt; session.add(r)
+&gt;&gt;&gt; r = Rating(user_id = eye.id, movie_id=m6.id, rating=1)
+&gt;&gt;&gt; session.add(r)
+&gt;&gt;&gt; session.commit()</code></pre>
+<p>Now, <strong>The Eye</strong> officially has bad taste. The Eye can be made more interesting by giving it more ratings.</p>
+<p>Next, we want to add <strong>The Eye's</strong> opinion to our movie view. We modify our prediction code.</p>
+<pre><code># Prediction code: only predict if the user hasn&#39;t rated it.
+user = db_session.query(User).get(session[&#39;user_id&#39;])
+prediction = None
+if not user_rating:
+    prediction = user.predict_rating(movie)
+    effective_rating = prediction
+else:
+    effective_rating = user_rating.rating
+
+the_eye = db_session.query(User).filter_by(email=&quot;theeye@ofjudgement.com&quot;).one()
+eye_rating = db_session.query(Rating).filter_by(user_id=the_eye.id, movie_id=movie.id).first()
+
+if not eye_rating:
+    eye_rating = the_eye.predict_rating(movie)
+else:
+    eye_rating = eye_rating.rating
+
+difference = abs(eye_rating - effective_rating)</code></pre>
+<p>Finally, we use the difference to get a message. We know that the maximum difference between a user's opinion and the eye's opinion is going to be 4, at the most (If you rate something a 5 and it rates something a 1, or vice versa). If we take the difference, we can use that to choose a message to display.</p>
+<pre><code>messages = [ &quot;I suppose you don&#39;t have such bad taste after all.&quot;,
+             &quot;I regret every decision that I&#39;ve ever made that has brought me to listen to your opinion.&quot;,
+             &quot;Words fail me, as your taste in movies has clearly failed you.&quot;,
+             &quot;That movie is great. For a clown to watch. Idiot.&quot;,
+
+beratement = messages[int(difference)]</code></pre>
+<p>We can then pass this beratement to the template and display it somewhere prominent. See if you can figure out how to make the eye choose from a wider selection of messages (hint, multiply the difference by something). Then, make your eye more <em>evil</em>.</p>
+<h2 id="chapter-4-the-end">Chapter 4: The End</h2>
+<p>Congratulations. You've completed an exercise in databases, machine learning, and web development. This is a lot to take in, don't be afraid to review everything you've done here, and try to do it again. It should be faster the second time around. Practice makes perfect, etc.</p>
+<p>Next steps are gussying up the app to be pretty, making it terrible to behold. You're officially instructed to go wild.</p>
+</body>
+</html>
