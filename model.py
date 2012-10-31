@@ -41,9 +41,9 @@ class Rating(Base):
 class Movie(Base):
     __tablename__ = "movies"
     id = Column(Integer, primary_key = True)
-    title = Column(String(64), nullable=False)
+    title = Column(String(128), nullable=False)
     released_on = Column(Date, nullable=False)
-    imdb_url = Column(String(128))
+    imdb_url = Column(String(256))
 
 ### End class declarations
 
