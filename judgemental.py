@@ -112,4 +112,4 @@ if __name__ == "__main__":
     if not db_uri:
         db_uri = "sqlite:///ratings.db"
     model.connect(db_uri)
-    app.run(debug=True)
+    app.run(debug=True, port=os.environ.get("PORT", 5000))
