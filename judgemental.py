@@ -77,9 +77,16 @@ def view_movie(id):
             user_rating = r
         rating_nums.append(r.rating)
     avg_rating = float(sum(rating_nums))/len(rating_nums)
+
+    prediction = None
+    if not user_rating:
+        user = db_session.query(User).get(g.user_id) 
+        prediction = user.predict_rating(movie)
+        print prediction
     
     return render_template("movie.html", movie=movie, 
-            average=avg_rating, user_rating=user_rating)
+            average=avg_rating, user_rating=user_rating,
+            prediction = prediction)
 
 @app.route("/rate/<int:id>", methods=["POST"])
 def rate_movie(id):
@@ -107,6 +114,11 @@ def my_ratings():
 
     ratings = db_session.query(Rating).filter_by(user_id=g.user_id).all()
     return render_template("my_ratings.html", ratings=ratings)
+
+@app.route("/logout")
+def logout():
+    del session['user_id']
+    return redirect(url_for("index"))
 
 if __name__ == "__main__":
     db_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
