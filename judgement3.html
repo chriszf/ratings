@@ -225,6 +225,7 @@ def similarity(user1, user2):
     return matched_rating.rating * top_user[0]</code></pre>
 </div>
 
+
 <p>Take a look at this function. It's slightly different from the console commands we typed in. We use <a href="http://docs.python.org/2/tutorial/datastructures.html#list-comprehensions">list comprehensions</a>, which are a way to combine certain types of for-loops and lists. On top of that, instead of querying the database for the matching rating record, we just search through the list we already have. Make sure you're comfortable lining up the 'experimental version' with the final version before moving on.</p>
 <p>Once again, since this is a method pertaining to users and movies, it makes sense to be an instance method. The question is, does it go on the user instance or the movie instance? In this case, it's English to the rescue. A user will predict their rating of a given movie, so we'll put it there.</p>
 <div class="spoilers">
@@ -253,9 +254,64 @@ def similarity(user1, user2):
 &gt;&gt;&gt; m = session.query(Movie).get(300)
 &gt;&gt;&gt; print u.predict(m)
 1.0000000000000013</code></pre>
-<p>Note, this may take a long time to run, as a lot of queries are being made. But now, we have a simply interface to predict how a user will rate a movie.</p>
-<h3 id="bonus-round">BONUS ROUND</h3>
-<p>We have a lot of ratings and similarities that we're throwing away, when we could really do something with them. The multiplication of rating and similarity is useful, even for users who have <em>negative</em> similarities. If you find a user who has a -1 similarity who rated a movie at 5, there's a fair chance you'd rate that movie a 1. Using maths, we can <em>blend</em> all the similarities and ratings together. Try to build a more accurate prediction formed from all the ratings we have using a weighted average.</p>
+<p>Note, this may take a long time to run, as a lot of queries are being made. But now, we have a simply interface to predict how a user will rate a movie. But... it's not very good. Intuitively, the prediction number here is too close to 1 to seem correct. Let's stop and see why.</p>
+<p>If we inject some print statements into our function to see what the similarities are like, we can see that there are quite a few users who have a similarity of 1.0. This is a weakness of this method: the fewer ratings you have, the less accurate it is. The users who are rated 1.0 in similarity are a statistical quirk. It's quirky enough that we can't use <em>just one</em> user, we'll have to blend our results together.</p>
+<p>To blend the users, we'll need to keep track of how similar a user is, as well as their actual rating. We'll change our tuple around, instead of having it be composed of (similarity coeffecient, user instance), we'll make it (similarity coefficient, rating).</p>
+<div class="spoilers">
+
+<pre><code>    def predict_rating(self, movie):
+        ratings = self.ratings
+        other_ratings = movie.ratings
+        similarities = [ (self.similarity(r.user), r) \
+            for r in other_ratings ]
+        similarities.sort(reverse = True)
+        top_user = similarities[0]
+        return top_user[1].rating * top_user[0]</code></pre>
+</div>
+
+<p>This has the added bonus of simplifying our function by quite a bit, since we don't have to do a second pass over the ratings list to find the appropriate rating: they're already matched with the correct similarity.</p>
+<p>Still, this is functionally equivalent to our previous iteration, which gives us bad results. We still need to blend them. The simplest mechanism for blending is called the weighted mean. It's a lot like an average, but instead of summing all the ratings and dividing by the number of ratings, we do something that gives more weight to users who are more similar:</p>
+<pre><code>weighted mean:
+mean = sum(ratings * coefficients ) / sum(coefficients)</code></pre>
+<p>Thus, our python changes:</p>
+<div class="spoilers">
+
+<pre><code>    def predict_rating(self, movie):
+        ratings = self.ratings
+        other_ratings = movie.ratings
+        similarities = [ (self.similarity(r.user), r) \
+            for r in other_ratings ]
+        similarities.sort(reverse = True)
+        numerator = sum([ r.rating * similarity for similarity, r in similarities ])
+        denominator = sum([ similarity[0] for similarity in similarities ])
+        return numerator/denominator</code></pre>
+</div>
+
+<p>This is better, but not perfect. The existence of negative similarities has the potential to push our prediction <em>beyond</em> the 1 to 5 rating system. We have sufficient information in the positive similarities that we can throw them out. (Although mathematically, we'd do better to rescale our rating system between -1 to 1, use the negative coefficients, then rescale it back.) Filter out the negative similarities now, being sure to check that you still have some ratings left to work with after throwing out negative values:</p>
+<div class="spoilers">
+
+<pre><code>    def predict_rating(self, movie):
+        ratings = self.ratings
+        other_ratings = movie.ratings
+        similarities = [ (self.similarity(r.user), r) \
+            for r in other_ratings ]
+        similarities.sort(reverse = True)
+        similarities = [ sim for sim in similarities if sim[0] &gt; 0 ]
+        if not similarities:
+            return None
+        numerator = sum([ r.rating * similarity for similarity, r in similarities ])
+        denominator = sum([ similarity[0] for similarity in similarities ])
+        return numerator/denominator</code></pre>
+</div>
+
+<p>This looks pretty good, let's see how it predicts:</p>
+<pre><code>&gt;&gt;&gt; u = session.query(User).get(1)
+&gt;&gt;&gt; m = session.query(Movie).get(300)
+&gt;&gt;&gt; print u.predict_rating(m)
+3.610924095880413</code></pre>
+<p>Not bad.</p>
+<h3 id="bonus-round-optional">BONUS ROUND (Optional)</h3>
+<p>You'll notice that this prediction is fairly similar to the overall average for the movie. This is because we're essentially taking that average, and giving users who are more similar to you more of a precedence. This is <em>reasonable</em>, but not necessarily the best way to do this. We can get something slightly more interesting (perhaps) by taking all the movies you've rated, finding out which movie it's most similar to, and then multiplying your rating of that movie by its similarity to get a prediction. This represents your preferences more than it represents your similarity to other people. Try doing this by adding the similarity method to the Movie class (a fine time to do inheritance), then changing the User prediction method to use that instead.</p>
 <h2 id="chapter-2-in-which-we-make-our-app-predictive">Chapter 2: In Which We Make Our App Predictive</h2>
 <p>To add prediction to our app, we simply have to, when a user views a movie, call the prediction function and display the results. In the reference implementation, the view we want to modify is <strong>view_movie</strong>.</p>
 <div class="spoilers">
