@@ -15,6 +15,7 @@
 <h2 id="chapter-0-in-which-we-practice-querying">Chapter 0: In Which We Practice Querying</h2>
 <p>One of the things which we haven't explored is SA's querying capabilities. The basic query is the 'get', which works by querying on primary keys. When you type something like this in python:</p>
 <pre><code>user = session.query(model.User).get(5)</code></pre>
+<p>Note: If you've run python -i model.py you don't need to call "model" - just call the object from within the model (User or Movie) that you are trying to reach.</p>
 <p>It translates to the following SQL query:</p>
 <pre><code>select * from users where id = 5;</code></pre>
 <p>We can query on specific fields:</p>
@@ -59,7 +60,7 @@ for r in ratings:
     movies.append(movie)
 
 for m in movies:
-    print movie.title</code></pre>
+    print m.title</code></pre>
 <p>Not bad, but there's still a bit of code. Given one record in the user table, we have to manually query for the appropriate rows in the other two tables. On top of that, it requires 1 query to get the user, 1 query to get all of that user's ratings, and then N queries to get all of the movies. If you'll recall, we can use SQL joins to get all that data at once, but it's not obvious how joins fit into SA's mechanisms.</p>
 <p>SA has a mechanism called a 'relationship' that uses SQL joins, but hides the nitty-gritty from you. Let's update our model.py file. Add the following imports to the top of the file:</p>
 <pre><code>from sqlalchemy import ForeignKey
@@ -179,12 +180,20 @@ def index():
 <p>Make a 'templates' directory, and add a user_list.html file to it:</p>
 <pre><code>&lt;html&gt;
 {% for user in user_list %}
-&lt;h2&gt;User {{ user.id }}, age {{ user.age }} has {{ len(user.ratings) }} ratings&lt;/h2&gt;
+&lt;h2&gt;User {{ user.id }}, age {{ user.age }} has {{ user.ratings|length }} ratings&lt;/h2&gt;
 {% endfor %}
 &lt;/html&gt;</code></pre>
 <p>Start your app by running:</p>
 <pre><code>python judgement.py</code></pre>
 <p>And access it by going to <a href="http://localhost:5000/">http://localhost:5000/</a> in your browser.</p>
+<p>Note: This could take a really long time to load assuming you're using the list with thousands of users so try modifying this line in judgement.py:</p>
+<pre><code>@app.route(&quot;/&quot;)
+def index():
+    user_list = model.session.query(model.User).limit(5).all()
+    return render_template(&quot;user_list.html&quot;, users=user_list)</code></pre>
+<p>Make a 'templates' directory, and add a user_list.html file to it:</p>
+<pre><code>
+<p>This will limit the number of users the query will run through.</p>
 <p>By switching to SA, we've eliminated a good deal of boilerplate code that was necessary to interact with our database. Instead, we can directly use objects and their attributes without worry about how to query for them.</p>
 <h3 id="your-mission-should-you-choose-to-accept-it">Your mission, should you choose to accept it</h3>
 <p>Is to build out some CRUDL-style views for our User and Ratings objects. Here are some use cases:</p>
