@@ -53,7 +53,7 @@ Row    &lt;-&gt;  Instance</code></pre>
     id = Column(Integer, primary_key=True)
     email = Column(String)
     password = Column(String)
-
+    
     def __init__(self, email, password):
         self.email = email
         self.password = password</code></pre>
@@ -162,14 +162,7 @@ A movie has many users through ratings</code></pre>
 <p>Well, not so fast. Writing schemas is hard work. Not only that, it's tedious work. It needs to be done, but it gets tricky remembering where all the parens and optional words go. No, we're better than that, we won't stoop to their level. We'll write <em>code</em> that writes our schemas for us.</p>
 <p>First, ls in your project directory. You should see a model.py file. Note the conspicuous absence of a database file. Not there? Good. We'll begin the alchemy.</p>
 <p>SQLAlchemy is powerful software, and the process it uses by which it transmutes python into sql and back is indeed alchemical. While it would be most excellent for you to <em>understand</em> exactly what's happening, at this stage we just need to be able use it reliably. Trust the incantations, then open your model.py file, and we'll start building our User model.</p>
-<p>We're going to be doing things backwards from the first time around. We'll start with our User class and a standard __init__ method.</p>
-<pre><code>class User(Base):
-    def __init__(self, age, zipcode, email = None, password = None):
-        self.email = email
-        self.password = password
-        self.age = age
-        self.zipcode = zipcode</code></pre>
-<p>We're making emails and passwords optional, so we're allowing them to be None if they're not provided during initialization. This seems reasonable so far, except for the fact that we inherit from the <strong>Base</strong> class, which is defined on line 5 as:</p>
+<p>Part of SQLAlchemy's magic is that it includes the __init__ function in the *background*, out of our view, thus sparing us from having to write it out. OK, this magic seems reasonable so far, except for the fact that we inherit from the <strong>Base</strong> class, which is defined on line 5???? as:</p>
 <pre><code>Base = declarative_base()</code></pre>
 <p>Now, we're beginning to cross the line from normal python into SQLAlchemy. The Base class is simply required for SQLALchemy's magic to work. Now, we'll add the rest. We'll add lines to the User class:</p>
 <pre><code>class User(Base):
@@ -181,11 +174,6 @@ A movie has many users through ratings</code></pre>
     age = Column(Integer, nullable=True)
     zipcode = Column(String(15), nullable=True)
 
-    def __init__(self, email = None, password = None, age=None, zipcode=None):
-        self.email = email
-        self.password = password
-        self.age = age
-        self.zipcode = zipcode</code></pre>
 <p>We'll go over it line by line, but try not to find the deeper reasons for this syntax: this is a fairly non-standard use of python class attributes. It's allowed by the language definition, but ultimately, these lines we just added are SQLAlchemy specific and only make sense in that context. It's good to remember them, but it's equally good to remember how to look them up.</p>
 <p>The first line</p>
 <pre><code>__tablename__ = &quot;users&quot;</code></pre>
@@ -292,7 +280,7 @@ id          email                    password    age         zipcode
 
 <h3 id="reversing-directions">Reversing Directions</h3>
 <p>We inserted data in SQL, then got it back out on the python end, where we could update it. Now, let's do the reverse, where we insert data in from python. Let's make a record for Charles.</p>
-<pre><code>&gt;&gt;&gt; charles = User(&quot;charles@hackbrightacademy.com&quot;, &quot;notsecure&quot;, &quot;25&quot;, &quot;94103&quot;)</code></pre>
+<pre><code>&gt;&gt;&gt; charles = User(email=&quot;charles@hackbrightacademy.com&quot;, password=&quot;notsecure&quot;, age=&quot;25&quot;, zipcode=&quot;94103&quot;)</code></pre>
 <p>If we query the database, we get nothing:</p>
 <pre><code>sqlite&gt; select * from users;
 id          email                    password    age         zipcode   
@@ -318,7 +306,7 @@ id          email                    password    age         zipcode
 ----------  -----------------------  ----------  ----------  ----------
 2           charles@hackbrightacade  moresecure  25          94103     </code></pre>
 <p>Let's do one more thing. We've so far relied on sqlite to assign unique ids to our users. We can force users to have a particular id.</p>
-<pre><code>&gt;&gt;&gt; david = User(&quot;d@hackbrightacademy.com&quot;, &quot;password&quot;, 26, &quot;94103&quot;)
+<pre><code>&gt;&gt;&gt; david = User(email=&quot;d@hackbrightacademy.com&quot;, password=&quot;password&quot;, age=26, zipcode=&quot;94103&quot;)
 &gt;&gt;&gt; david.id = 5
 &gt;&gt;&gt; session.add(david)
 &gt;&gt;&gt; session.commit()</code></pre>
