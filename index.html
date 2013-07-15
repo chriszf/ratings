@@ -52,11 +52,7 @@ Row    &lt;-&gt;  Instance</code></pre>
     __tablename__ = &quot;Users&quot;
     id = Column(Integer, primary_key=True)
     email = Column(String)
-    password = Column(String)
-
-    def __init__(self, email, password):
-        self.email = email
-        self.password = password</code></pre>
+    password = Column(String)</code></pre>
 <p>Given this, our ORM can <em>deduce</em> the original schema we generated earlier. The generation of the sql schema can be left to the software. Furthermore, our previous example of changing a user's password can be done as follows:</p>
 <pre><code>chriszf = db.query(User).get(5)
 chriszf.password = &quot;mynewpassword&quot;
@@ -162,16 +158,12 @@ A movie has many users through ratings</code></pre>
 <p>Well, not so fast. Writing schemas is hard work. Not only that, it's tedious work. It needs to be done, but it gets tricky remembering where all the parens and optional words go. No, we're better than that, we won't stoop to their level. We'll write <em>code</em> that writes our schemas for us.</p>
 <p>First, ls in your project directory. You should see a model.py file. Note the conspicuous absence of a database file. Not there? Good. We'll begin the alchemy.</p>
 <p>SQLAlchemy is powerful software, and the process it uses by which it transmutes python into sql and back is indeed alchemical. While it would be most excellent for you to <em>understand</em> exactly what's happening, at this stage we just need to be able use it reliably. Trust the incantations, then open your model.py file, and we'll start building our User model.</p>
-<p>We're going to be doing things backwards from the first time around. We'll start with our User class and a standard __init__ method.</p>
+<p>We're going to be doing things backwards from the first time around. We'll start with our User class without an __init__ method:</p>
 <pre><code>class User(Base):
-    def __init__(self, age, zipcode, email = None, password = None):
-        self.email = email
-        self.password = password
-        self.age = age
-        self.zipcode = zipcode</code></pre>
-<p>We're making emails and passwords optional, so we're allowing them to be None if they're not provided during initialization. This seems reasonable so far, except for the fact that we inherit from the <strong>Base</strong> class, which is defined on line 5 as:</p>
+    pass</code></pre>
+<p>So far, the only thing out of the ordinary is the inheritance from a class named 'Base'. This is how we declare a class to be managed by SQLAlchemy. The Base class is defined on line 5:</p>
 <pre><code>Base = declarative_base()</code></pre>
-<p>Now, we're beginning to cross the line from normal python into SQLAlchemy. The Base class is simply required for SQLALchemy's magic to work. Now, we'll add the rest. We'll add lines to the User class:</p>
+<p>The Base class is simply required for SQLALchemy's magic to work. Now, we'll start adding column definitions. We'll add the following lines to the User class:</p>
 <pre><code>class User(Base):
     __tablename__ = &quot;users&quot;
 
@@ -179,13 +171,7 @@ A movie has many users through ratings</code></pre>
     email = Column(String(64), nullable=True)
     password = Column(String(64), nullable=True)
     age = Column(Integer, nullable=True)
-    zipcode = Column(String(15), nullable=True)
-
-    def __init__(self, email = None, password = None, age=None, zipcode=None):
-        self.email = email
-        self.password = password
-        self.age = age
-        self.zipcode = zipcode</code></pre>
+    zipcode = Column(String(15), nullable=True)</code></pre>
 <p>We'll go over it line by line, but try not to find the deeper reasons for this syntax: this is a fairly non-standard use of python class attributes. It's allowed by the language definition, but ultimately, these lines we just added are SQLAlchemy specific and only make sense in that context. It's good to remember them, but it's equally good to remember how to look them up.</p>
 <p>The first line</p>
 <pre><code>__tablename__ = &quot;users&quot;</code></pre>
@@ -196,6 +182,8 @@ A movie has many users through ratings</code></pre>
 <pre><code>email = Column(String(64), nullable=True)</code></pre>
 <p>This behaves as you'd expect, with the exception of the 'nullable=True' part. That tells SQLAlchemy (and thus, SQLite) that this column is optional, it's allowed to be null/None. Since our ml-100k dataset is anonymized, we won't have any email addresses for any of the users we're given. However, to simplify things, we'll be using the same table to store <em>new</em> users who can log in via email, so we need to make the field available for them. An alternative solution would be to make the email column required, and generate fake emails for the anonymous users.</p>
 <p>The remaining columns follow in a similar fashion.</p>
+<p>The word 'String' is not a built-in python class (that one is 'str'), nor is Integer (int, respectively). These are the SQLAlchemy-managed versions of the same datatypes. You'll find that they're imported from sqlalchemy.orm, at the top of the file. SQLAlchemy has a number of other data types as well, including datetimes, booleans, floats, etc., all imported from the same place.</p>
+<p>The last thing of note is that there is no __init__ function. SQLAlchemy's Base class provides one for you that uses keyword arguments when initializing objects. It's required for some of the magic to work, so don't add one unless you've consulted the SQLAlchemy documentation on doing so.</p>
 <p>So far, we haven't seen anything special happen, except some of our python was written weirdly. In our terminal window with the activated virtual environment, (reactivate it by going to your project directory and typing <strong>source env/bin/activate</strong> if you somehow lost it), run your model.py with the -i option:</p>
 <pre><code>python -i model.py</code></pre>
 <p>In your interactive python shell that results, type in</p>
@@ -292,7 +280,7 @@ id          email                    password    age         zipcode
 
 <h3 id="reversing-directions">Reversing Directions</h3>
 <p>We inserted data in SQL, then got it back out on the python end, where we could update it. Now, let's do the reverse, where we insert data in from python. Let's make a record for Charles.</p>
-<pre><code>&gt;&gt;&gt; charles = User(&quot;charles@hackbrightacademy.com&quot;, &quot;notsecure&quot;, &quot;25&quot;, &quot;94103&quot;)</code></pre>
+<pre><code>&gt;&gt;&gt; charles = User(email=&quot;charles@hackbrightacademy.com&quot;, password=&quot;notsecure&quot;, age=25, zipcode=&quot;94103&quot;)</code></pre>
 <p>If we query the database, we get nothing:</p>
 <pre><code>sqlite&gt; select * from users;
 id          email                    password    age         zipcode   
@@ -318,7 +306,7 @@ id          email                    password    age         zipcode
 ----------  -----------------------  ----------  ----------  ----------
 2           charles@hackbrightacade  moresecure  25          94103     </code></pre>
 <p>Let's do one more thing. We've so far relied on sqlite to assign unique ids to our users. We can force users to have a particular id.</p>
-<pre><code>&gt;&gt;&gt; david = User(&quot;d@hackbrightacademy.com&quot;, &quot;password&quot;, 26, &quot;94103&quot;)
+<pre><code>&gt;&gt;&gt; david = User(email=&quot;d@hackbrightacademy.com&quot;, password=&quot;password&quot;, age=26, zipcode=&quot;94103&quot;)
 &gt;&gt;&gt; david.id = 5
 &gt;&gt;&gt; session.add(david)
 &gt;&gt;&gt; session.commit()</code></pre>
@@ -341,6 +329,7 @@ id          email                    password    age         zipcode
 <li>repeat until done</li>
 </ol>
 <p>Each of the files is formatted slightly differently, so you'll need to write slightly different functions for each.</p>
+<p>Parsing titles (removing year of release) Parsing datetimes</p>
 <h2 id="addendum-unicode">Addendum: Unicode</h2>
 <p>Unicode is kind of tough to grasp. It's a collection of 'code points' that represent all the known characters in use in modern language, whether it's the western alphabet, or Asian kana systems. The concept of code points is really irrelevant to our discussions. The most important thing is that a unicode string is capable of representing any character in any syllabary we have a font for.</p>
 <p>The thing is, having this kind of flexibility requires a lot of space. In good, old ascii, letters are any one of 52 numbers, both upper and lower case. Add in other symbols on the keyboard, a few symbols <em>not</em> on the keyboard, and still everything fits in a single byte. Each character only needed a single byte to represent it. A string of 30 characters needed 30 bytes total to store.</p>
